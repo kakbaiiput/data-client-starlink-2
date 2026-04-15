@@ -1073,6 +1073,55 @@
             display: block;
         }
 
+        /* Custom Copy Dropdown */
+        .custom-copy-dropdown {
+            position: fixed;
+            background: var(--bg-container);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+            z-index: 10000;
+            min-width: 260px;
+            max-width: 300px;
+            display: none;
+        }
+
+        .custom-copy-dropdown.show {
+            display: block;
+        }
+
+        .custom-copy-hint {
+            margin: 0 0 6px 0;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .custom-copy-body {
+            padding: 10px 12px;
+        }
+
+        .custom-copy-execute-btn {
+            flex: 1;
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            background: var(--accent-blue);
+            color: var(--text-white);
+            transition: all 0.2s ease;
+        }
+
+        .custom-copy-execute-btn:hover {
+            opacity: 0.85;
+            transform: translateY(-1px);
+        }
+
+        .custom-copy-execute-btn:active {
+            transform: translateY(0);
+        }
+
         .column-dropdown-header {
             padding: 12px 16px;
             background: var(--bg-header);
@@ -2556,6 +2605,10 @@
                             <button class="btn-modern btn-icon btn-clear-all" id="clearFilters" title="Clear All Filters">
                                 <span>🗑️</span>
                             </button>
+
+                            <button class="btn-modern btn-icon" id="customCopyBtn" title="Custom Copy - Pilih kolom yang ingin dicopy" onclick="toggleCustomCopyDropdown()">
+                                <span>📝</span>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -3905,6 +3958,15 @@
                     dropdown.classList.remove('show');
                     console.log('🔒 Dropdown closed instantly (click outside)');
                 }
+
+                // Close custom copy dropdown on outside click
+                const customCopyDropdown = document.getElementById('customCopyDropdown');
+                const customCopyBtn = document.getElementById('customCopyBtn');
+                if (customCopyDropdown && customCopyDropdown.classList.contains('show') &&
+                    !customCopyDropdown.contains(event.target) &&
+                    !customCopyBtn.contains(event.target)) {
+                    customCopyDropdown.classList.remove('show');
+                }
             });
 
             // Modal events
@@ -4822,8 +4884,117 @@
             showToast(`📊 Sorted by ${sortLabel} (${directionLabel})`);
         }
 
+        // ===== CUSTOM COPY =====
+
+        // Columns available for custom copy (in display order)
+        const CUSTOM_COPY_FIELDS = [
+            { key: 'A', label: 'Nama' },
+            { key: 'I', label: 'No KIT' },
+            { key: 'P', label: 'Paket' },
+            { key: 'K', label: 'Tanggal Jatuh Tempo' }
+        ];
+
+        // Selected columns state (default: Nama selected)
+        const customCopySelected = new Set(['A']);
+
+        function initCustomCopyDropdown() {
+            const container = document.getElementById('customCopyCols');
+            container.innerHTML = '';
+
+            CUSTOM_COPY_FIELDS.forEach(field => {
+                const item = document.createElement('div');
+                item.className = 'column-item';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `ccc-${field.key}`;
+                checkbox.checked = customCopySelected.has(field.key);
+                checkbox.addEventListener('change', function() {
+                    if (this.checked) {
+                        customCopySelected.add(field.key);
+                    } else {
+                        customCopySelected.delete(field.key);
+                    }
+                });
+
+                const label = document.createElement('label');
+                label.htmlFor = `ccc-${field.key}`;
+                label.textContent = field.label;
+                label.style.cursor = 'pointer';
+                label.style.flex = '1';
+
+                item.appendChild(checkbox);
+                item.appendChild(label);
+                container.appendChild(item);
+            });
+        }
+
+        function toggleCustomCopyDropdown() {
+            const dropdown = document.getElementById('customCopyDropdown');
+            const toggleBtn = document.getElementById('customCopyBtn');
+
+            // Close column dropdown if open
+            const colDropdown = document.getElementById('columnDropdown');
+            if (colDropdown && colDropdown.classList.contains('show')) {
+                colDropdown.classList.remove('show');
+            }
+
+            if (dropdown.classList.contains('show')) {
+                dropdown.classList.remove('show');
+            } else {
+                const rect = toggleBtn.getBoundingClientRect();
+                dropdown.style.top = (rect.bottom + 8) + 'px';
+                dropdown.style.left = rect.left + 'px';
+                dropdown.style.right = 'auto';
+
+                // Prevent going off-screen to the right
+                const dropdownWidth = 280;
+                if (rect.left + dropdownWidth > window.innerWidth) {
+                    dropdown.style.left = 'auto';
+                    dropdown.style.right = '10px';
+                }
+
+                dropdown.classList.add('show');
+            }
+        }
+
+        function executeCustomCopy() {
+            if (customCopySelected.size === 0) {
+                showToast('⚠️ Pilih minimal satu kolom!');
+                return;
+            }
+
+            if (!filteredData || filteredData.length === 0) {
+                showToast('⚠️ Tidak ada data yang ditampilkan!');
+                return;
+            }
+
+            // Keep columns in the defined display order
+            const orderedKeys = CUSTOM_COPY_FIELDS
+                .filter(f => customCopySelected.has(f.key))
+                .map(f => f.key);
+
+            const lines = filteredData.map(row => {
+                return orderedKeys.map(key => {
+                    if (key === 'K') {
+                        // Format date for Jatuh Tempo
+                        return row[key] ? memoizedDateFormat(row[key]) : '-';
+                    }
+                    return (row[key] || '').toString().trim() || '-';
+                }).join(' - ');
+            });
+
+            const text = lines.join('\n');
+            copyToClipboard(text);
+
+            // Close dropdown after copy
+            document.getElementById('customCopyDropdown').classList.remove('show');
+
+            showToast(`📋 ${filteredData.length} data dicopy (${orderedKeys.length} kolom)`);
+        }
+
         // ===== COLUMN MANAGEMENT =====
-        
+
         function initializeColumnDropdown() {
             const content = document.getElementById('columnDropdownContent');
             const columns = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S'];
@@ -5245,6 +5416,7 @@
 
             initializeEventListeners();
             initializeColumnDropdown();
+            initCustomCopyDropdown();
 
             loadData();
 
@@ -5294,6 +5466,23 @@
             });
         });
     </script>
+
+    <!-- Custom Copy Dropdown - body level to avoid stacking context clipping -->
+    <div class="custom-copy-dropdown" id="customCopyDropdown">
+        <div class="column-dropdown-header">
+            <span>📝 Custom Copy</span>
+            <button onclick="toggleCustomCopyDropdown()" style="background: none; border: none; color: var(--text-white); cursor: pointer; font-size: 16px;">×</button>
+        </div>
+        <div class="custom-copy-body">
+            <p class="custom-copy-hint">Pilih kolom yang ingin dicopy dari data yang ditampilkan:</p>
+            <div id="customCopyCols">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+        <div class="column-actions">
+            <button class="custom-copy-execute-btn" onclick="executeCustomCopy()">📋 Copy Data</button>
+        </div>
+    </div>
 
     <!-- Column Dropdown moved to body level to avoid backdrop-filter stacking context clipping -->
     <div class="column-dropdown" id="columnDropdown">
